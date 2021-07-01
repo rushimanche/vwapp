@@ -90,7 +90,31 @@ class VWAPCalculator:
             i += 1
         return(output)
 
+    def getDJIAVWAP(self):
+        output = []
+        tickers = self.getDJIATickers()
+        data = yf.download(tickers=tickers, period='1h', interval='1m')
+        i = 0 
+        while i < len(data.tail(1)['Close'].columns):
+            price_tail_value = 1
+            volume_tail_value = 1
+            while self.isValue(data.tail(price_tail_value)['Close'].values[0][i]) == False:
+                price_tail_value += 1
+            while self.isValue(data.tail(volume_tail_value)['Volume'].values[0][i]) == False:
+                volume_tail_value += 1
+            output.append({"Ticker": data.tail(1)['Close'].columns[i], "Price": data.tail(price_tail_value)['Close'].values[0][i], "Volume": data.tail(volume_tail_value)['Volume'].values[0][i]})
+            i = i + 1
+            df = pd.DataFrame(output)
+            df = df.assign(
+                vwap=df.eval(
+                    'wgtd = Price * Volume', inplace=False
+                ).cumsum().eval('wgtd / Volume')
+            )
+            return(df)
+    
 
+
+    
     
 
 
