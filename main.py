@@ -130,11 +130,17 @@ class VWAPCalculator:
             ).cumsum().eval('wgtd / Volume')
         )
         return(df)
-    
-    
 
+    
+    def getHighestVWAPPositiveDifferential(self, df):
+        differential = df['vwap'] / df['Price'] - 1
+        ticker = df.loc[differential.idxmax(), 'Ticker']
+        return(ticker)
+
+    def getLowestVWAPPositiveDifferential(self, df):
+        differential = df['vwap'] / df['Price'] - 1
+        ticker = df.loc[differential.idxmin(), 'Ticker']
+        return(ticker)
 
 a = VWAPCalculator()
-#a.getAllTickers()
-#a.getTestValues()
 a.getSP500VWAP()
