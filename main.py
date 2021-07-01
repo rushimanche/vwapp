@@ -93,35 +93,32 @@ class VWAPCalculator:
     def getDJIAVWAP(self):
         output = []
         tickers = self.getDJIATickers()
-        data = yf.download(tickers=tickers, period='1h', interval='1m')
+        data = yf.download(tickers=tickers, period='10m', interval='1m')
+        prices = data["Close"].apply(lambda col: col[col.notna()].iat[-1] if col.notna().any() else np.nan )
+        volumes = data["Volume"].apply(lambda col: col[col.notna()].iat[-1] if col.notna().any() else np.nan )
         i = 0 
         while i < len(data.tail(1)['Close'].columns):
-            price_tail_value = 1
-            volume_tail_value = 1
-            while self.isValue(data.tail(price_tail_value)['Close'].values[0][i]) == False:
-                price_tail_value += 1
-            while self.isValue(data.tail(volume_tail_value)['Volume'].values[0][i]) == False:
-                volume_tail_value += 1
-            output.append({"Ticker": data.tail(1)['Close'].columns[i], "Price": data.tail(price_tail_value)['Close'].values[0][i], "Volume": data.tail(volume_tail_value)['Volume'].values[0][i]})
+            output.append({"Ticker": data.tail(1)['Close'].columns[i], "Price": prices[data.tail(1)['Close'].columns[i]], "Volume": volumes[data.tail(1)['Volume'].columns[i]]})
             i = i + 1
-            df = pd.DataFrame(output)
-            df = df.assign(
-                vwap=df.eval(
-                    'wgtd = Price * Volume', inplace=False
-                ).cumsum().eval('wgtd / Volume')
-            )
-            return(df)
+        df = pd.DataFrame(output)
+        df = df.assign(
+            vwap=df.eval(
+                'wgtd = Price * Volume', inplace=False
+            ).cumsum().eval('wgtd / Volume')
+        )
+        return(df)
+
     
 
     def getSP500VWAP(self):
         output = []
         tickers = self.getSP500Tickers()
-        data = yf.download(tickers=tickers, period='100m', interval='1m')
-        i = 0
+        data = yf.download(tickers=tickers, period='10m', interval='1m')
+        prices = data["Close"].apply(lambda col: col[col.notna()].iat[-1] if col.notna().any() else np.nan )
+        volumes = data["Volume"].apply(lambda col: col[col.notna()].iat[-1] if col.notna().any() else np.nan )
+        i = 0 
         while i < len(data.tail(1)['Close'].columns):
-            price_tail_value = 1
-            volume_tail_value = 1
-            output.append({"Ticker": data.tail(1)['Close'].columns[i], "Price": data.tail(price_tail_value)['Close'].values[0][i], "Volume": data.tail(volume_tail_value)['Volume'].values[0][i]})
+            output.append({"Ticker": data.tail(1)['Close'].columns[i], "Price": prices[data.tail(1)['Close'].columns[i]], "Volume": volumes[data.tail(1)['Volume'].columns[i]]})
             i = i + 1
         df = pd.DataFrame(output)
         df = df.assign(
