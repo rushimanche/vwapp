@@ -77,8 +77,20 @@ class VWAPCalculator:
         return(self.listToString(df['Symbol'].values))
 
 
+    def getAllStockPricesAndVolumes(self):
+        output = []
+        tickers = self.getAllTickers()
+        data = yf.download(tickers=tickers, period='1d', interval='1m')
+        i = 0
+        while i < len(data.tail(1)['Close'].columns):
+            tail_value = 1
+            while self.isValue(data.tail(tail_value)['Close'].values[0][i], data.tail(tail_value)['Volume'].values[0][i]) == False:
+                tail_value += 1
+            output.append({"Ticker": data.tail(tail_value)['Close'].columns[i], "Price": data.tail(tail_value)['Close'].values[0][i], "Volume": data.tail(tail_value)['Volume'].values[0][i]})
+            i += 1
+        return(output)
 
-    
+
     
 
 
