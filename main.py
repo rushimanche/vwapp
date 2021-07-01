@@ -5,7 +5,7 @@ from numpy.lib.type_check import nan_to_num
 import pandas as pd
 import time
 from bs4 import BeautifulSoup as bs
-
+import numpy as np
 #Data Source
 import yfinance as yf
 import requests
