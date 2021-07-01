@@ -55,8 +55,16 @@ class VWAPCalculator:
         df = pd.DataFrame(data['rows'], columns=data['headers'])
         return(self.listToString(df['symbol'].values))
 
+    def getDJIATickers(self):
+        url = 'https://www.dogsofthedow.com/dow-jones-industrial-average-companies.htm'
+        request = requests.get(url,headers={'User-Agent': 'Mozilla/5.0'})
+        soup = bs(request.text, "lxml")
+        stats = soup.find('table',class_='tablepress tablepress-id-42 tablepress-responsive')
+        pulled_df =pd.read_html(str(stats))[0]
 
-    
+        return(self.listToString(pulled_df['Symbol'].values))
+
+
     
 
 
