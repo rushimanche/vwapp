@@ -6,13 +6,24 @@ import pandas as pd
 import time
 from bs4 import BeautifulSoup as bs
 import numpy as np
+from requests.models import default_hooks
 #Data Source
 import yfinance as yf
 import requests
+import os
+from datetime import datetime
+from apscheduler.schedulers.background import BackgroundScheduler
+from twilio.rest import Client 
 
-#Data viz
-import plotly.graph_objs as go
+from os.path import join, dirname
+from dotenv import load_dotenv
 
+dotenv_path = join(dirname(__file__), '.env')
+load_dotenv(dotenv_path)
+
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+TWILIO_MESSAGING_SERVICE_SID = os.environ.get("TWILIO_MESSAGING_SERVICE_SID")
 
 class VWAPCalculator:
 
@@ -93,7 +104,7 @@ class VWAPCalculator:
     def getDJIAVWAP(self):
         output = []
         tickers = self.getDJIATickers()
-        data = yf.download(tickers=tickers, period='10m', interval='1m')
+        data = yf.download(tickers=tickers, period='1w', interval='1d')
         prices = data["Close"].apply(lambda col: col[col.notna()].iat[-1] if col.notna().any() else np.nan )
         volumes = data["Volume"].apply(lambda col: col[col.notna()].iat[-1] if col.notna().any() else np.nan )
         i = 0 
@@ -107,8 +118,6 @@ class VWAPCalculator:
             ).cumsum().eval('wgtd / Volume')
         )
         return(df)
-
-    
 
     def getSP500VWAP(self):
         output = []
@@ -128,16 +137,105 @@ class VWAPCalculator:
         )
         return(df)
 
+    def getSingleVWAP(self, ticker):
+        output = []
+        data = yf.download(tickers=ticker, period='10m', interval='1m')
+        df = data.assign(
+            vwap=data.eval(
+                'wgtd = Close * Volume', inplace=False
+            ).cumsum().eval('wgtd / Volume')
+        )
+        return(df)
     
     def getHighestVWAPPositiveDifferential(self, df):
         differential = df['vwap'] / df['Price'] - 1
-        ticker = df.loc[differential.idxmax(), 'Ticker']
-        return(ticker)
+        ticker_data = df.loc[df['Ticker'] == df.loc[differential.idxmax(), 'Ticker']]
+        return([ticker_data.iloc[0]['Ticker'], ticker_data.iloc[0]['Price']])
 
     def getLowestVWAPPositiveDifferential(self, df):
         differential = df['vwap'] / df['Price'] - 1
-        ticker = df.loc[differential.idxmin(), 'Ticker']
-        return(ticker)
+        ticker_data = df.loc[df['Ticker'] == df.loc[differential.idxmin(), 'Ticker']]
+        return([ticker_data.iloc[0]['Ticker'], ticker_data.iloc[0]['Price']])
 
+    def getLatestVWAPReading(self, df):
+        counter = 1
+        while (self.isValue(df['vwap'].tail(counter).values[0]) == False or self.isValue(df['Close'].tail(counter).values[0]) == False):
+            counter += 1
+        price = df['Close'].tail(counter).values[0]
+        vwap = df['vwap'].tail(counter).values[0] 
+        return(price / vwap)
+
+    def textUserSingleUpdates(self, ticker, number):
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) 
+        
+        stock_status = self.getLatestVWAPReading(self.getSingleVWAP(ticker))
+
+        if(stock_status < 1):
+            body = 'BUY ' + ticker + '! ' + 'The current price is ' + str(stock_status * 100) + '% below the VWAP.'
+        else:
+            body = 'SELL ' + ticker + '! ' + 'The current price is ' + str(stock_status * 100) + '% above the VWAP.'
+
+        message = client.messages.create(  
+                                    messaging_service_sid=TWILIO_MESSAGING_SERVICE_SID, 
+                                    body=body,      
+                                    to=number
+                                )
+
+    def textUserDJIAUpdates(self, number):
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) 
+        
+        djia_data = self.getDJIAVWAP()
+        winner_stock = self.getHighestVWAPPositiveDifferential(djia_data)
+        loser_stock = self.getLowestVWAPPositiveDifferential(djia_data)
+
+        body = 'BUY ' + winner_stock[0] + ' AT $' + str(winner_stock[1]) + '. ' + 'SELL ' + loser_stock[0] + ' AT $' + str(loser_stock[1]) + '.'
+
+        message = client.messages.create(  
+                                    messaging_service_sid=TWILIO_MESSAGING_SERVICE_SID, 
+                                    body=body,      
+                                    to=number
+                                )
+
+    def textUserSP500Updates(self, number):
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) 
+        
+        sp500_data = self.getSP500VWAP()
+        winner_stock = self.getHighestVWAPPositiveDifferential(sp500_data)
+        loser_stock = self.getLowestVWAPPositiveDifferential(sp500_data)
+
+        body = 'BUY ' + winner_stock[0] + ' AT $' + str(winner_stock[1]) + '. ' + 'SELL ' + loser_stock[0] + ' AT $' + str(loser_stock[1]) + '.'
+
+        message = client.messages.create(  
+                                    messaging_service_sid=TWILIO_MESSAGING_SERVICE_SID, 
+                                    body=body,      
+                                    to=number
+                                )
+                                
+    def scheduleNotifications(self, number, type, ticker=None):
+        scheduler = BackgroundScheduler()
+
+        if type == 'single':
+            scheduler.add_job(self.textUserSingleUpdates, 'interval', [ticker, number], hours=3) #modify hours variable for scheduling
+            scheduler.start()
+        
+        if type == 'djia':
+            scheduler.add_job(self.textUserDJIAUpdates, 'interval', [number], hours=3) #modify hours variable for scheduling
+            scheduler.start()
+
+        if type == 'sp500':
+            scheduler.add_job(self.textUserSP500Updates, 'interval', [number], hours=3) #modify hours variable for scheduling
+            scheduler.start()
+
+        print('Press Ctrl+{0} to exit'.format('Break' if os.name == 'nt' else 'C'))
+
+        try:
+            # This is here to simulate application activity (which keeps the main thread alive).
+            while True:
+                time.sleep(2)
+        except (KeyboardInterrupt, SystemExit):
+            # Not strictly necessary if daemonic mode is enabled but should be done if possible
+            scheduler.shutdown()
+        
 a = VWAPCalculator()
-a.getSP500VWAP()
+#a.getDJIAVWAP()
+a.scheduleNotifications('+15023410940', 'djia')
