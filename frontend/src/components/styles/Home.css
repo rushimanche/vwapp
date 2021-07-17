@@ -1,0 +1,13 @@
+.Home {
+    background-color: black;
+    width: 400px;
+    height: 500px;
+    color: white;
+}
+
+.Welcome {
+    width: 80px;
+    background-color: white;
+    height: 50px;
+    color: black;
+}

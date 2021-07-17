@@ -1,0 +1,9 @@
+flask
+numpy
+pandas
+bs4
+requests
+yfinance
+apscheduler
+twilio
+python_dotenv

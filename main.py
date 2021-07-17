@@ -1,22 +1,22 @@
-# Raw Package
 import numpy as np
 from numpy.core.numeric import NaN
 from numpy.lib.type_check import nan_to_num
-import pandas as pd
+import pandas as pd, glob
 import time
 from bs4 import BeautifulSoup as bs
 import numpy as np
 from requests.models import default_hooks
-#Data Source
 import yfinance as yf
 import requests
 import os
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from twilio.rest import Client 
-
+from flask import Flask
 from os.path import join, dirname
 from dotenv import load_dotenv
+import stock_pandas as spd
+from stock_pandas import StockDataFrame
 
 dotenv_path = join(dirname(__file__), '.env')
 load_dotenv(dotenv_path)
@@ -146,7 +146,86 @@ class VWAPCalculator:
             ).cumsum().eval('wgtd / Volume')
         )
         return(df)
+
+    def getSingleRSI(self, data, time_window):
+        diff = data.diff(1).dropna()
+        up_chg = 0 * diff
+        down_chg = 0 * diff
+        up_chg[diff > 0] = diff[ diff>0 ]
+        down_chg[diff < 0] = diff[ diff < 0 ]
+        up_chg_avg   = up_chg.ewm(com=time_window-1 , min_periods=time_window).mean()
+        down_chg_avg = down_chg.ewm(com=time_window-1 , min_periods=time_window).mean()
+        rs = abs(up_chg_avg/down_chg_avg)
+        rsi = 100 - 100/(1+rs)
+        df['RSI'] = rsi
+        return(df)
     
+    def getDJIARSI(self):
+        output = []
+        tickers = self.getDJIATickers()
+        df = yf.download(tickers=tickers, period='30d', interval='1d')
+        data = df['Adj Close']
+        for (columnName, columnData) in data.iteritems():
+            output.append({"Ticker": columnName, "Price": self.getSingleRSI(columnData, 14).tail(1)['Close'].values[0], "Volume": self.getSingleRSI(columnData, 14).tail(1)['Volume'].values[0], "RSI": self.getSingleRSI(columnData, 14).tail(1)['RSI'].values[0]})
+        df = pd.DataFrame(output)
+        print(df)
+
+    def getSP500RSI(self):
+        output = []
+        tickers = self.getSP500Tickers()
+        df = yf.download(tickers=tickers, period='30d', interval='1d')
+        data = df['Adj Close']
+        for (columnName, columnData) in data.iteritems():
+            output.append({"Ticker": columnName, "Price": self.getSingleRSI(columnData, 14).tail(1)['Close'].values[0], "Volume": self.getSingleRSI(columnData, 14).tail(1)['Volume'].values[0], "RSI": self.getSingleRSI(columnData, 14).tail(1)['RSI'].values[0]})
+        df = pd.DataFrame(output)
+        print(df)
+
+    def getDJIAAdditionalIndicators(self):
+        output = []
+        tickers = self.getDJIATickers()
+        df = yf.download(tickers=tickers, period='6h', interval='1h')
+        print(df)
+        data = df['Open']
+        for (ticker, open_data) in data.iteritems():
+            high_data = df['High'][ticker].values
+            low_data = df['Low'][ticker].values
+            close_data = df['Close'][ticker].values
+
+            stock = StockDataFrame({
+            'open' : open_data.values,
+            'high' : high_data,
+            'low'  : low_data,
+            'close': close_data
+            })
+            output.append({"Ticker": ticker, "Price": open_data[6], "KDJ": stock['kdj.d'][6], "MACD": stock['macd'][6], 'BOLL': stock['boll'][6], 'MA': stock['ma:5'][6], 'MA': stock['ema:5'][6], 'BBI': stock['bbi'][6]})
+            
+            df = pd.DataFrame(output)
+        print(stock['kdj.d'][6])
+        print(df.columns)
+
+    def getSP500AdditionalIndicators(self):
+        output = []
+        tickers = self.getSP500AdditionalIndicators()
+        df = yf.download(tickers=tickers, period='6h', interval='1h')
+        data = df['Open']
+        for (ticker, open_data) in data.iteritems():
+            high_data = df['High'][ticker].values
+            low_data = df['Low'][ticker].values
+            close_data = df['Close'][ticker].values
+
+            stock = StockDataFrame({
+            'open' : open_data.values,
+            'high' : high_data,
+            'low'  : low_data,
+            'close': close_data
+            })
+            output.append({"Ticker": ticker, "Price": open_data[6], "KDJ": stock['kdj.d'][6], "MACD": stock['macd'][6], 'BOLL': stock['boll'][6], 'MA': stock['ma:5'][6], 'MA': stock['ema:5'][6], 'BBI': stock['bbi'][6]})
+            
+            df = pd.DataFrame(output)
+        print(stock['kdj.d'][6])
+        print(df.columns)
+            
+
     def getHighestVWAPPositiveDifferential(self, df):
         differential = df['vwap'] / df['Price'] - 1
         ticker_data = df.loc[df['Ticker'] == df.loc[differential.idxmax(), 'Ticker']]
@@ -235,7 +314,25 @@ class VWAPCalculator:
         except (KeyboardInterrupt, SystemExit):
             # Not strictly necessary if daemonic mode is enabled but should be done if possible
             scheduler.shutdown()
-        
+
+
 a = VWAPCalculator()
 #a.getDJIAVWAP()
-a.scheduleNotifications('+15023410940', 'djia')
+#a.scheduleNotifications('+15023410940', 'djia')
+#df = yf.download(tickers='AAPL', period='30d', interval='1d')
+a.getDJIAAdditionalIndicators()
+"""
+app = Flask(__name__)
+
+@app.route("/")
+def index():
+    return "Congratulations, it's a web app!"
+
+@app.route("/notify")
+def notify():
+    a.scheduleNotifications('+15023410940', 'djia')
+    return "Notification setup!"
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=8080, debug=True)
+"""
